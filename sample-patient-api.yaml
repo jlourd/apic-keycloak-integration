@@ -1,0 +1,465 @@
+swagger: '2.0'
+info:
+  title: Patient FHIR API
+  version: 1.0.0
+  description: |
+    Sample FHIR-based Patient API secured with Keycloak OAuth 2.0
+    This API demonstrates integration between IBM API Connect and Keycloak
+  contact:
+    name: API Support
+    email: api-support@example.com
+    
+host: api.yourdomain.com
+basePath: /fhir/v1
+schemes:
+  - https
+
+# Security Definitions
+securityDefinitions:
+  keycloak-oauth:
+    type: oauth2
+    flow: accessCode
+    authorizationUrl: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/auth
+    tokenUrl: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/token
+    scopes:
+      openid: OpenID Connect scope
+      profile: User profile information
+      email: User email address
+      api_access: Access to FHIR API operations
+    x-ibm-oauth-provider: keycloak-oauth-provider
+
+# Apply security globally
+security:
+  - keycloak-oauth:
+      - openid
+      - api_access
+
+# API Paths
+paths:
+  /Patient:
+    get:
+      summary: Search for patients
+      description: Search for patients based on various criteria
+      operationId: searchPatients
+      tags:
+        - Patient
+      security:
+        - keycloak-oauth:
+            - openid
+            - api_access
+      parameters:
+        - name: name
+          in: query
+          description: Patient name (partial match)
+          type: string
+        - name: birthdate
+          in: query
+          description: Patient birth date (YYYY-MM-DD)
+          type: string
+          format: date
+        - name: identifier
+          in: query
+          description: Patient identifier
+          type: string
+        - name: _count
+          in: query
+          description: Number of results to return
+          type: integer
+          default: 20
+      responses:
+        '200':
+          description: Search results
+          schema:
+            $ref: '#/definitions/Bundle'
+          examples:
+            application/json:
+              resourceType: Bundle
+              type: searchset
+              total: 1
+              entry:
+                - resource:
+                    resourceType: Patient
+                    id: '12345'
+                    identifier:
+                      - system: 'http://hospital.example.com/patients'
+                        value: 'MRN-123456'
+                    name:
+                      - family: 'Smith'
+                        given: ['John']
+                    gender: male
+                    birthDate: '1980-05-15'
+        '401':
+          description: Unauthorized - Invalid or missing OAuth token
+        '403':
+          description: Forbidden - Insufficient permissions
+        '500':
+          description: Internal server error
+          
+    post:
+      summary: Create a new patient
+      description: Create a new patient resource
+      operationId: createPatient
+      tags:
+        - Patient
+      security:
+        - keycloak-oauth:
+            - openid
+            - api_access
+      parameters:
+        - name: body
+          in: body
+          description: Patient resource
+          required: true
+          schema:
+            $ref: '#/definitions/Patient'
+      responses:
+        '201':
+          description: Patient created successfully
+          schema:
+            $ref: '#/definitions/Patient'
+          headers:
+            Location:
+              type: string
+              description: URL of the created patient resource
+        '400':
+          description: Bad request - Invalid patient data
+        '401':
+          description: Unauthorized - Invalid or missing OAuth token
+        '403':
+          description: Forbidden - Insufficient permissions
+        '500':
+          description: Internal server error
+
+  /Patient/{id}:
+    get:
+      summary: Read a patient by ID
+      description: Retrieve a specific patient by their ID
+      operationId: getPatientById
+      tags:
+        - Patient
+      security:
+        - keycloak-oauth:
+            - openid
+            - api_access
+      parameters:
+        - name: id
+          in: path
+          description: Patient ID
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Patient resource
+          schema:
+            $ref: '#/definitions/Patient'
+        '401':
+          description: Unauthorized - Invalid or missing OAuth token
+        '403':
+          description: Forbidden - Insufficient permissions
+        '404':
+          description: Patient not found
+        '500':
+          description: Internal server error
+          
+    put:
+      summary: Update a patient
+      description: Update an existing patient resource
+      operationId: updatePatient
+      tags:
+        - Patient
+      security:
+        - keycloak-oauth:
+            - openid
+            - api_access
+      parameters:
+        - name: id
+          in: path
+          description: Patient ID
+          required: true
+          type: string
+        - name: body
+          in: body
+          description: Updated patient resource
+          required: true
+          schema:
+            $ref: '#/definitions/Patient'
+      responses:
+        '200':
+          description: Patient updated successfully
+          schema:
+            $ref: '#/definitions/Patient'
+        '400':
+          description: Bad request - Invalid patient data
+        '401':
+          description: Unauthorized - Invalid or missing OAuth token
+        '403':
+          description: Forbidden - Insufficient permissions
+        '404':
+          description: Patient not found
+        '500':
+          description: Internal server error
+          
+    delete:
+      summary: Delete a patient
+      description: Delete a patient resource
+      operationId: deletePatient
+      tags:
+        - Patient
+      security:
+        - keycloak-oauth:
+            - openid
+            - api_access
+      parameters:
+        - name: id
+          in: path
+          description: Patient ID
+          required: true
+          type: string
+      responses:
+        '204':
+          description: Patient deleted successfully
+        '401':
+          description: Unauthorized - Invalid or missing OAuth token
+        '403':
+          description: Forbidden - Insufficient permissions
+        '404':
+          description: Patient not found
+        '500':
+          description: Internal server error
+
+# Data Models
+definitions:
+  Patient:
+    type: object
+    required:
+      - resourceType
+    properties:
+      resourceType:
+        type: string
+        enum: [Patient]
+      id:
+        type: string
+        description: Logical id of this patient resource
+      identifier:
+        type: array
+        description: Patient identifiers
+        items:
+          $ref: '#/definitions/Identifier'
+      active:
+        type: boolean
+        description: Whether this patient record is in active use
+      name:
+        type: array
+        description: Patient names
+        items:
+          $ref: '#/definitions/HumanName'
+      telecom:
+        type: array
+        description: Contact details
+        items:
+          $ref: '#/definitions/ContactPoint'
+      gender:
+        type: string
+        enum: [male, female, other, unknown]
+        description: Patient gender
+      birthDate:
+        type: string
+        format: date
+        description: Patient birth date (YYYY-MM-DD)
+      address:
+        type: array
+        description: Patient addresses
+        items:
+          $ref: '#/definitions/Address'
+          
+  Identifier:
+    type: object
+    properties:
+      system:
+        type: string
+        description: The namespace for the identifier value
+      value:
+        type: string
+        description: The value that is unique
+      use:
+        type: string
+        enum: [usual, official, temp, secondary]
+        
+  HumanName:
+    type: object
+    properties:
+      use:
+        type: string
+        enum: [usual, official, temp, nickname, anonymous, old, maiden]
+      family:
+        type: string
+        description: Family name (surname)
+      given:
+        type: array
+        description: Given names (first name, middle name)
+        items:
+          type: string
+      prefix:
+        type: array
+        description: Parts that come before the name
+        items:
+          type: string
+      suffix:
+        type: array
+        description: Parts that come after the name
+        items:
+          type: string
+          
+  ContactPoint:
+    type: object
+    properties:
+      system:
+        type: string
+        enum: [phone, fax, email, pager, url, sms, other]
+      value:
+        type: string
+        description: The actual contact point details
+      use:
+        type: string
+        enum: [home, work, temp, old, mobile]
+        
+  Address:
+    type: object
+    properties:
+      use:
+        type: string
+        enum: [home, work, temp, old, billing]
+      type:
+        type: string
+        enum: [postal, physical, both]
+      line:
+        type: array
+        description: Street address lines
+        items:
+          type: string
+      city:
+        type: string
+      state:
+        type: string
+      postalCode:
+        type: string
+      country:
+        type: string
+        
+  Bundle:
+    type: object
+    properties:
+      resourceType:
+        type: string
+        enum: [Bundle]
+      type:
+        type: string
+        enum: [searchset, collection, document, message, transaction, batch]
+      total:
+        type: integer
+        description: Total number of matches
+      entry:
+        type: array
+        description: Bundle entries
+        items:
+          $ref: '#/definitions/BundleEntry'
+          
+  BundleEntry:
+    type: object
+    properties:
+      fullUrl:
+        type: string
+        description: Absolute URL for the resource
+      resource:
+        $ref: '#/definitions/Patient'
+
+# API Connect specific extensions
+x-ibm-configuration:
+  # Gateway configuration
+  gateway: datapower-api-gateway
+  type: rest
+  phase: realized
+  enforced: true
+  testable: true
+  cors:
+    enabled: true
+  
+  # Assembly policies
+  assembly:
+    execute:
+      # OAuth validation using JWT
+      - oauth:
+          title: Validate OAuth Token
+          version: 2.0.0
+          oauth-provider-settings-ref:
+            default: keycloak-oauth-provider
+          
+      # Extract user information from JWT
+      - set-variable:
+          title: Extract User Context
+          version: 2.0.0
+          actions:
+            - set: message.headers.X-User-ID
+              value: $(request.jwt.claims.sub)
+              type: string
+            - set: message.headers.X-User-Email
+              value: $(request.jwt.claims.email)
+              type: string
+            - set: message.headers.X-User-Organization
+              value: $(request.jwt.claims.organization)
+              type: string
+            - set: message.headers.X-Client-ID
+              value: $(request.jwt.claims.azp)
+              type: string
+      
+      # Rate limiting based on user tier
+      - activity-log:
+          title: Log API Activity
+          version: 2.0.0
+          
+      # Call backend service
+      - invoke:
+          title: Invoke FHIR Backend
+          version: 2.0.0
+          target-url: https://fhir-backend.yourdomain.com$(request.path)$(request.search)
+          timeout: 60
+          verb: keep
+          cache-response: protocol
+          cache-ttl: 900
+          output: fhir-response
+          
+      # Handle response
+      - map:
+          title: Map Response
+          version: 2.0.0
+          inputs:
+            fhir-response:
+              schema:
+                type: object
+              variable: message.body
+          outputs:
+            output:
+              schema:
+                type: object
+              variable: message.body
+  
+  # Catalogs and products
+  catalogs:
+    sandbox:
+      properties:
+        application-lifecycle:
+          approval-required: false
+          application-subscriptions:
+            enabled: true
+    production:
+      properties:
+        application-lifecycle:
+          approval-required: true
+          application-subscriptions:
+            enabled: true
+  
+  # Rate limits
+  activity-log:
+    enabled: true
+    success-content: activity
+    error-content: payload

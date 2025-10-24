@@ -1,0 +1,28 @@
+# Environment variables with secrets
+.env
+
+# Tokens and credentials
+access_token.txt
+refresh_token.txt
+*.token
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node modules (if using keycloak-client-manager.js)
+node_modules/
+package-lock.json
+
+# Temporary files
+tmp/
+temp/

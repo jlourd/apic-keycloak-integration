@@ -1,0 +1,190 @@
+swagger: '2.0'
+info:
+  title: Keycloak Client Creation API
+  version: 1.0.0
+  description: |
+    API to create Keycloak clients (applications) by calling the Keycloak Admin REST API.
+    The API obtains an admin access token using the password grant (Resource Owner Password Credentials)
+    with an admin username/password and then calls the Keycloak Admin endpoints to
+    create the client and retrieve its generated secret.
+    
+    Authentication method:
+    - grant_type: password
+    - client_id: admin-cli (or your admin client)
+    - username: admin (Keycloak admin user)
+    - password: admin password
+
+host: api.yourdomain.com
+basePath: /admin
+schemes:
+  - https
+
+consumes:
+  - application/json
+produces:
+  - application/json
+
+paths:
+  /clients:
+    post:
+      summary: Create a new Keycloak client (application)
+      description: Create a Keycloak client and return client_id and client_secret
+      operationId: createKeycloakClient
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            description: Keycloak client representation (see Keycloak Admin API)
+      responses:
+        '201':
+          description: Client created. Returns clientId, keycloakId and clientSecret.
+          schema:
+            type: object
+            properties:
+              clientId:
+                type: string
+              keycloakId:
+                type: string
+              clientSecret:
+                type: string
+        '400':
+          description: Bad request
+        '401':
+          description: Unauthorized to call Keycloak
+        '500':
+          description: Server error
+
+# IBM API Connect assembly to orchestrate calls to Keycloak
+x-ibm-configuration:
+  gateway: datapower-api-gateway
+  type: rest
+  phase: realized
+  enforced: true
+  testable: true
+  cors:
+    enabled: true
+
+  assembly:
+    execute:
+      # 1) Build client payload from request body
+      - set-variable:
+          title: Save client payload
+          version: 2.0.0
+          actions:
+            - set: request.variables.clientPayload
+              value: $(request.body)
+
+      # 2) Obtain admin access token using password grant
+      - invoke:
+          title: Obtain Keycloak Admin Token
+          version: 2.0.0
+          target-url: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/token
+          verb: POST
+          timeout: 60
+          headers:
+            Content-Type: application/x-www-form-urlencoded
+          body: grant_type=password&client_id=admin-cli&username=admin&password=admin-password
+          output: keycloak_token_response
+
+      - set-variable:
+          title: Extract access token
+          version: 2.0.0
+          actions:
+            - set: request.variables.adminAccessToken
+              value: $(keycloak_token_response.body.access_token)
+
+      # 3) Create Keycloak client (app)
+      - invoke:
+          title: Create Keycloak Client
+          version: 2.0.0
+          target-url: https://keycloak.yourdomain.com:8443/auth/admin/realms/apic-integration/clients
+          verb: POST
+          timeout: 60
+          headers:
+            Content-Type: application/json
+            Authorization: Bearer $(request.variables.adminAccessToken)
+          body: $(request.variables.clientPayload)
+          output: keycloak_create_response
+
+      # 4) Extract created Keycloak internal id from Location header
+      - set-variable:
+          title: Save keycloak location
+          version: 2.0.0
+          actions:
+            - set: request.variables.keycloakLocation
+              value: $(keycloak_create_response.headers.location)
+
+      - gatewayscript:
+          title: Extract keycloak id from location
+          version: 2.0.0
+          engine: nodejs
+          source: |
+            var keycloakLocation = context.get('request.variables.keycloakLocation') || '';
+            var parts = keycloakLocation.split('/');
+            var id = parts[parts.length - 1] || '';
+            context.set('request.variables.keycloakId', id);
+
+      # 5) Retrieve client secret for the created client
+      - invoke:
+          title: Get Client Secret
+          version: 2.0.0
+          target-url: https://keycloak.yourdomain.com:8443/auth/admin/realms/apic-integration/clients/$(request.variables.keycloakId)/client-secret
+          verb: POST
+          timeout: 60
+          headers:
+            Content-Type: application/json
+            Authorization: Bearer $(request.variables.adminAccessToken)
+          output: keycloak_secret_response
+
+      # 6) Map and return the result to the caller
+      - map:
+          title: Build response
+          version: 2.0.0
+          inputs:
+            keycloak_create_response:
+              variable: keycloak_create_response
+            keycloak_secret_response:
+              variable: keycloak_secret_response
+          outputs:
+            output:
+              variable: message.body
+              schema:
+                type: object
+                properties:
+                  clientId:
+                    type: string
+                  keycloakId:
+                    type: string
+                  clientSecret:
+                    type: string
+          mappings:
+            - from: $(request.variables.clientPayload.clientId)
+              to: $(message.body.clientId)
+            - from: $(request.variables.keycloakId)
+              to: $(message.body.keycloakId)
+            - from: $(keycloak_secret_response.body.value)
+              to: $(message.body.clientSecret)
+
+  # TLS profile to trust Keycloak server (refer to existing TLS profile)
+  tls:
+    clientProfile: keycloak-tls-profile
+
+  catalogs:
+    sandbox:
+      properties:
+        application-lifecycle:
+          approval-required: false
+          application-subscriptions:
+            enabled: true
+
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: x-api-key
+    in: header
+
+security:
+  - api_key: []
+

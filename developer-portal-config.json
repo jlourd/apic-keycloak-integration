@@ -1,0 +1,224 @@
+{
+  "developer_portal_config": {
+    "version": "10.0.8.0",
+    "name": "APIC Developer Portal with Keycloak Integration",
+    "description": "Developer portal configuration for app registration with Keycloak OAuth",
+    
+    "oauth_integration": {
+      "provider": "keycloak-oauth-provider",
+      "oauth_provider_url": "https://keycloak.yourdomain.com:8443/auth/realms/apic-integration",
+      
+      "app_registration": {
+        "enabled": true,
+        "auto_approve": false,
+        "require_admin_approval": true,
+        
+        "client_registration": {
+          "method": "manual",
+          "sync_with_keycloak": true,
+          
+          "keycloak_admin_api": {
+            "base_url": "https://keycloak.yourdomain.com:8443/auth/admin/realms/apic-integration",
+            "admin_username": "admin",
+            "admin_password": "admin-password",
+            "client_id": "apic-developer-portal",
+            "client_secret": "developer-portal-secret"
+          },
+          
+          "client_defaults": {
+            "protocol": "openid-connect",
+            "standard_flow_enabled": true,
+            "implicit_flow_enabled": false,
+            "direct_access_grants_enabled": false,
+            "service_accounts_enabled": false,
+            "public_client": false,
+            "full_scope_allowed": false,
+            
+            "default_client_scopes": [
+              "openid",
+              "profile",
+              "email",
+              "api_access"
+            ],
+            
+            "redirect_uri_pattern": "https://{app_callback_domain}/callback",
+            
+            "attributes": {
+              "access.token.lifespan": "300",
+              "client_credentials.use_refresh_token": "false"
+            }
+          }
+        }
+      },
+      
+      "app_lifecycle": {
+        "on_app_create": {
+          "create_keycloak_client": true,
+          "generate_credentials": true,
+          "notify_developer": true
+        },
+        
+        "on_app_update": {
+          "update_keycloak_client": true,
+          "sync_redirect_uris": true
+        },
+        
+        "on_app_delete": {
+          "delete_keycloak_client": true,
+          "revoke_tokens": true
+        },
+        
+        "credential_rotation": {
+          "enabled": true,
+          "allow_developer_rotation": true,
+          "auto_rotation_days": 90
+        }
+      }
+    },
+    
+    "developer_portal_ui": {
+      "app_registration_form": {
+        "fields": [
+          {
+            "name": "application_name",
+            "label": "Application Name",
+            "type": "text",
+            "required": true,
+            "validation": "^[a-zA-Z0-9-_\\s]{3,50}$"
+          },
+          {
+            "name": "application_description",
+            "label": "Description",
+            "type": "textarea",
+            "required": true
+          },
+          {
+            "name": "redirect_uris",
+            "label": "Redirect URIs",
+            "type": "array",
+            "required": true,
+            "validation": "^https://.*",
+            "help_text": "Enter one or more HTTPS redirect URIs for your application"
+          },
+          {
+            "name": "application_type",
+            "label": "Application Type",
+            "type": "select",
+            "required": true,
+            "options": [
+              {
+                "value": "web",
+                "label": "Web Application"
+              },
+              {
+                "value": "mobile",
+                "label": "Mobile Application"
+              },
+              {
+                "value": "spa",
+                "label": "Single Page Application"
+              },
+              {
+                "value": "service",
+                "label": "Backend Service"
+              }
+            ]
+          },
+          {
+            "name": "organization",
+            "label": "Organization",
+            "type": "text",
+            "required": false
+          }
+        ],
+        
+        "post_registration_display": {
+          "show_client_id": true,
+          "show_client_secret": true,
+          "show_endpoints": true,
+          "show_sample_code": true
+        }
+      },
+      
+      "credentials_display": {
+        "client_id": {
+          "label": "Client ID",
+          "copyable": true
+        },
+        "client_secret": {
+          "label": "Client Secret",
+          "copyable": true,
+          "maskable": true,
+          "regenerate": true
+        }
+      },
+      
+      "oauth_endpoints_display": {
+        "authorization_endpoint": "https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/auth",
+        "token_endpoint": "https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/token",
+        "userinfo_endpoint": "https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/userinfo",
+        "jwks_uri": "https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/certs"
+      }
+    },
+    
+    "api_subscription": {
+      "enabled": true,
+      "require_approval": true,
+      
+      "subscription_scope_mapping": {
+        "bronze_plan": ["openid", "profile", "api_access"],
+        "silver_plan": ["openid", "profile", "email", "api_access"],
+        "gold_plan": ["openid", "profile", "email", "api_access", "offline_access"]
+      },
+      
+      "rate_limiting": {
+        "bronze_plan": {
+          "rate": "100/hour",
+          "burst": 10
+        },
+        "silver_plan": {
+          "rate": "1000/hour",
+          "burst": 50
+        },
+        "gold_plan": {
+          "rate": "10000/hour",
+          "burst": 100
+        }
+      }
+    },
+    
+    "webhooks": {
+      "enabled": false,
+      "keycloak_event_listener": {
+        "events": [
+          "CLIENT_REGISTER",
+          "CLIENT_UPDATE",
+          "CLIENT_DELETE"
+        ],
+        "callback_url": "https://your-apic-manager.com/webhooks/keycloak"
+      }
+    },
+    
+    "testing_tools": {
+      "oauth_playground": {
+        "enabled": true,
+        "test_users": [
+          {
+            "username": "testuser",
+            "password": "Password123!"
+          }
+        ]
+      },
+      
+      "api_explorer": {
+        "enabled": true,
+        "auto_populate_token": true
+      }
+    }
+  },
+  
+  "sample_portal_code": {
+    "app_registration_handler": "portal-app-registration.js",
+    "keycloak_client_manager": "keycloak-client-manager.js"
+  }
+}

@@ -1,0 +1,171 @@
+---
+# IBM API Connect OAuth Provider Configuration
+# Version: 10.0.8.0
+# Integration with Keycloak 7.6.11.GA
+
+apiVersion: v1
+kind: OAuthProvider
+metadata:
+  name: keycloak-oauth-provider
+  title: Keycloak OAuth Provider
+  
+properties:
+  # OAuth Provider Type
+  type: third-party
+  
+  # Keycloak OAuth Endpoints
+  oauth_provider_settings:
+    # Authorization Endpoint
+    authorize_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/auth
+    
+    # Token Endpoint
+    token_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/token
+    
+    # Token Introspection Endpoint (if needed)
+    introspect_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/token/introspect
+    
+    # User Info Endpoint
+    userinfo_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/userinfo
+    
+    # JWKS URI for JWT validation (Preferred method)
+    jwks_uri: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/certs
+    
+    # Revoke Endpoint
+    revoke_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/revoke
+    
+    # End Session Endpoint
+    end_session_endpoint: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/logout
+  
+  # Client Credentials
+  client_credentials:
+    client_id: apic-native-oauth
+    client_secret: your-client-secret-here
+    
+  # Grant Types Supported
+  grants:
+    - authorization_code
+    - refresh_token
+    - client_credentials
+    
+  # Token Validation Method
+  token_validation:
+    # Use JWT validation with JWKS (faster, no introspection calls)
+    method: jwt
+    jwks_url: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration/protocol/openid-connect/certs
+    
+    # JWT validation settings
+    jwt_settings:
+      validate_signature: true
+      validate_expiration: true
+      validate_not_before: true
+      validate_issuer: true
+      expected_issuer: https://keycloak.yourdomain.com:8443/auth/realms/apic-integration
+      validate_audience: true
+      expected_audience: apic-native-oauth
+      clock_skew: 60  # seconds
+      
+  # Scopes
+  scopes:
+    - openid
+    - profile
+    - email
+    - api_access
+    
+  # Access Token Settings
+  access_token:
+    ttl: 300  # 5 minutes
+    
+  # Refresh Token Settings  
+  refresh_token:
+    ttl: 2592000  # 30 days
+    count: 1
+    
+  # Additional Security Settings
+  security:
+    # TLS/SSL settings for Keycloak communication
+    tls_client_profile: keycloak-tls-profile
+    
+    # PKCE support
+    pkce_enabled: true
+    pkce_required: false
+    
+    # State parameter
+    state_required: true
+    
+  # Token transformation (if needed to modify claims)
+  token_transformation:
+    enabled: true
+    # Custom policy to modify token claims before passing to API
+    assembly_policy: token-transform-policy
+    
+---
+# Example Token Transformation Policy Assembly
+apiVersion: v1
+kind: Policy
+metadata:
+  name: token-transform-policy
+  
+assembly:
+  execute:
+    - set-variable:
+        title: Extract User Info from Token
+        actions:
+          - set: message.headers.X-User-Email
+            value: $(request.jwt.claims.email)
+          - set: message.headers.X-User-ID
+            value: $(request.jwt.claims.sub)
+          - set: message.headers.X-User-Organization
+            value: $(request.jwt.claims.organization)
+            
+    - gatewayscript:
+        title: Transform Token Claims
+        version: 2.0.0
+        source: |
+          // Access the JWT payload
+          var jwt = context.get('request.jwt');
+          var claims = jwt.claims;
+          
+          // Add custom claims based on token information
+          var customClaims = {
+            'api_permissions': [],
+            'user_tier': 'standard'
+          };
+          
+          // Determine permissions based on roles
+          if (claims.realm_access && claims.realm_access.roles) {
+            if (claims.realm_access.roles.indexOf('api_developer') !== -1) {
+              customClaims.api_permissions.push('read', 'write');
+              customClaims.user_tier = 'premium';
+            } else {
+              customClaims.api_permissions.push('read');
+            }
+          }
+          
+          // Set context variables for later use
+          context.set('custom.claims', customClaims);
+          context.set('user.organization', claims.organization || 'default');
+          
+---
+# TLS Client Profile for Keycloak Connection
+apiVersion: v1
+kind: TLSClientProfile
+metadata:
+  name: keycloak-tls-profile
+  
+properties:
+  # Trust all certificates (for development only)
+  # In production, use proper certificate validation
+  protocols:
+    - TLSv1.2
+    - TLSv1.3
+    
+  # Certificate validation
+  certificate_validation:
+    validate_server_cert: true
+    trusted_ca_bundle: keycloak-ca-cert
+    
+  # Client certificate (if mutual TLS is required)
+  client_certificate:
+    enabled: false
+    # certificate: client-cert
+    # private_key: client-key
