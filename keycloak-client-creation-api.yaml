@@ -170,21 +170,3 @@ x-ibm-configuration:
   # TLS profile to trust Keycloak server (refer to existing TLS profile)
   tls:
     clientProfile: keycloak-tls-profile
-
-  catalogs:
-    sandbox:
-      properties:
-        application-lifecycle:
-          approval-required: false
-          application-subscriptions:
-            enabled: true
-
-securityDefinitions:
-  api_key:
-    type: apiKey
-    name: x-api-key
-    in: header
-
-security:
-  - api_key: []
-
